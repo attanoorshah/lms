@@ -1046,7 +1046,15 @@ def update_chapter_index(chapter: str, course: str, idx: int):
 # Matches SETTINGS_PAGE_LENGTH in the frontend, which pages `start` by this.
 MEMBERS_PAGE_LENGTH = 13
 
-MEMBER_FIELDS = ["name", "full_name", "user_image", "username", "last_active"]
+MEMBER_FIELDS = [
+	"name",
+	"full_name",
+	"user_image",
+	"username",
+	"last_active",
+	"ns_organization",
+	"ns_department",
+]
 
 
 def member_roles(member: str) -> list[str]:

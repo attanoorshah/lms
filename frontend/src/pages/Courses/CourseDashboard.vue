@@ -243,6 +243,33 @@
 						</li>
 					</ul>
 				</div>
+				<div
+					v-if="orgBreakdown.data?.rows?.length"
+					class="border rounded-lg p-4"
+				>
+					<div class="text-ink-gray-5 mb-4">
+						{{ __('Enrollments by Organization') }}
+					</div>
+					<ul class="flex flex-col space-y-3 text-sm list-none text-ink-gray-7">
+						<li
+							v-for="(row, index) in orgBreakdown.data.rows"
+							:key="row.organization || row.organization_name"
+							class="flex items-center cursor-pointer hover:text-ink-gray-9"
+							@click="openOrgMembers(row)"
+						>
+							<div
+								class="size-2 rounded shrink-0"
+								:style="{
+									backgroundColor: `var(--${orgColors[index % orgColors.length]}-400)`,
+								}"
+							></div>
+							<div class="ms-2 min-w-0 truncate">{{ row.organization_name }}</div>
+							<Tooltip :text="String(row.count)">
+								<div class="ms-auto shrink-0">{{ row.percentage }}%</div>
+							</Tooltip>
+						</li>
+					</ul>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -253,6 +280,43 @@
 		:student="currentStudent"
 		:lessons="lessonProgress"
 	/>
+	<Dialog
+		v-model:open="showOrgMembersDialog"
+		:title="`${__('Members')} — ${selectedOrgLabel}`"
+		size="lg"
+	>
+		<template #default>
+			<div v-if="orgMembers.loading" class="text-sm text-ink-gray-5 py-4 text-center">
+				{{ __('Loading...') }}
+			</div>
+			<div
+				v-else-if="!orgMembers.data?.length"
+				class="text-sm text-ink-gray-5 py-4 text-center"
+			>
+				{{ __('No members found') }}
+			</div>
+			<ul v-else class="divide-y divide-outline-elevation-2 list-none">
+				<li
+					v-for="member in orgMembers.data"
+					:key="member.member"
+					class="flex items-center gap-3 py-3 cursor-pointer"
+					@click="openOrgMember(member)"
+				>
+					<Avatar :image="member.member_image" :label="member.member_name" size="md" />
+					<div class="min-w-0 flex-1 truncate text-sm text-ink-gray-9">
+						{{ member.member_name }}
+					</div>
+					<ProgressBar
+						:progress="Math.ceil(Number(member.progress))"
+						class="!mx-0 w-24 shrink-0"
+					/>
+					<span class="text-xs shrink-0 w-10 text-end">
+						{{ Math.ceil(Number(member.progress)) }}%
+					</span>
+				</li>
+			</ul>
+		</template>
+	</Dialog>
 </template>
 <script setup lang="ts">
 import {
@@ -260,6 +324,7 @@ import {
 	Button,
 	createListResource,
 	createResource,
+	Dialog,
 	ECharts,
 	FormControl,
 	Tooltip,
@@ -335,6 +400,41 @@ const lessonProgress = createResource({
 	},
 	auto: true,
 })
+
+const orgBreakdown = createResource({
+	url: 'ns_lms_customizations.api.get_course_enrollment_by_organization',
+	makeParams() {
+		return {
+			course: props.course.data?.name,
+		}
+	},
+	auto: true,
+})
+
+const orgColors = computed(() => ['blue', 'green', 'amber', 'red', 'purple', 'cyan'])
+
+const showOrgMembersDialog = ref(false)
+const selectedOrgLabel = ref('')
+
+const orgMembers = createResource({
+	url: 'ns_lms_customizations.api.get_course_members_by_organization',
+	auto: false,
+})
+
+const openOrgMembers = (row: { organization?: string; organization_name: string }) => {
+	selectedOrgLabel.value = row.organization_name
+	showOrgMembersDialog.value = true
+	orgMembers.fetch({
+		course: props.course.data?.name,
+		organization: row.organization || '',
+	})
+}
+
+const openOrgMember = (member: Record<string, unknown>) => {
+	showOrgMembersDialog.value = false
+	currentStudent.value = member
+	showProgressModal.value = true
+}
 
 const updateLessonProgress = (value: string) => {
 	if (value == 'completion_rate') {

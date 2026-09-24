@@ -34,6 +34,25 @@
 						class="w-full"
 					/>
 				</div>
+				<Link
+					v-model="member.ns_organization"
+					doctype="Organization"
+					:label="__('Organization')"
+					:placeholder="__('Select organization')"
+					:inlineCreate="true"
+					inlineCreatePlaceholder="Organization name"
+					:onCreate="onCreateOrganization"
+				/>
+				<Link
+					v-model="member.ns_department"
+					doctype="Department"
+					:label="__('Department')"
+					:placeholder="__('Select department')"
+					:filters="{ organization: member.ns_organization }"
+					:inlineCreate="true"
+					inlineCreatePlaceholder="Department name"
+					:onCreate="onCreateDepartment"
+				/>
 				<div class="flex flex-col gap-2">
 					<div class="text-p-sm-medium text-ink-gray-7">
 						{{ __('Roles') }}
@@ -82,6 +101,7 @@ import { call, createResource, FormControl, toast } from 'frappe-ui'
 import { computed, inject, onMounted, reactive, ref, watch } from 'vue'
 import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
 import BooleanSwitch from '@/components/Controls/BooleanSwitch.vue'
+import Link from '@/components/Controls/Link.vue'
 import FormShell from '@/components/FormShell.vue'
 import HeaderButton from '@/components/HeaderButton.vue'
 import { useFormRoute } from '@/composables/useFormRoute'
@@ -89,7 +109,12 @@ import { notifyMembersChanged } from '@/stores/members'
 import { cleanError } from '@/utils'
 import type { Resource, SessionUser } from '@/types'
 
-type MemberRow = { name: string; roles?: string[] }
+type MemberRow = {
+	name: string
+	roles?: string[]
+	ns_organization?: string
+	ns_department?: string
+}
 
 const props = defineProps<{ memberID: string }>()
 
@@ -138,7 +163,11 @@ const member = reactive({
 	email: isEdit.value ? props.memberID : '',
 	first_name: '',
 	last_name: '',
+	ns_organization: '',
+	ns_department: '',
 })
+
+const initialProfile = reactive({ ns_organization: '', ns_department: '' })
 
 const roles = reactive({
 	moderator: false,
@@ -179,6 +208,11 @@ const memberRow = computed<MemberRow | null>(() =>
 watch(
 	memberRow,
 	(found) => {
+		member.ns_organization = found?.ns_organization ?? ''
+		member.ns_department = found?.ns_department ?? ''
+		initialProfile.ns_organization = member.ns_organization
+		initialProfile.ns_department = member.ns_department
+
 		const current = found?.roles ?? []
 		for (const key of Object.keys(ROLE_MAP) as (keyof typeof roles)[]) {
 			roles[key] = current.includes(ROLE_MAP[key])
@@ -225,6 +259,8 @@ const addMember = async () => {
 				email: member.email.trim(),
 				first_name: member.first_name.trim() || undefined,
 				last_name: member.last_name.trim() || undefined,
+				ns_organization: member.ns_organization || undefined,
+				ns_department: member.ns_department || undefined,
 			},
 		})
 
@@ -242,9 +278,54 @@ const addMember = async () => {
 	}
 }
 
+const onCreateOrganization = (name: string, done: () => void) => {
+	call('frappe.client.insert', {
+		doc: { doctype: 'Organization', organization_name: name },
+	}).then((data: any) => {
+		member.ns_organization = data.name
+		done()
+	})
+}
+
+const onCreateDepartment = (name: string, done: () => void) => {
+	if (!member.ns_organization) {
+		toast.error(__('Select an Organization first'))
+		return
+	}
+	call('frappe.client.insert', {
+		doc: {
+			doctype: 'Department',
+			department_name: name,
+			organization: member.ns_organization,
+		},
+	}).then((data: any) => {
+		member.ns_department = data.name
+		done()
+	})
+}
+
+const saveProfile = async () => {
+	const changes: Record<string, string> = {}
+	if (member.ns_organization !== initialProfile.ns_organization)
+		changes.ns_organization = member.ns_organization
+	if (member.ns_department !== initialProfile.ns_department)
+		changes.ns_department = member.ns_department
+	if (!Object.keys(changes).length) return
+
+	await call('frappe.client.set_value', {
+		doctype: 'User',
+		name: props.memberID,
+		fieldname: changes,
+	})
+	initialProfile.ns_organization = member.ns_organization
+	initialProfile.ns_department = member.ns_department
+}
+
 const saveRoles = async () => {
 	submitting.value = true
 	try {
+		await saveProfile()
+
 		for (const key of Object.keys(ROLE_MAP) as (keyof typeof roles)[]) {
 			if (roles[key] !== initialRoles[key]) {
 				await call('lms.lms.api.save_role', {
