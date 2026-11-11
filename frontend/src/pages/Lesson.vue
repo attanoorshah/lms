@@ -650,6 +650,11 @@ const progress = createResource({
 	onSuccess(data) {
 		lessonProgress.value = data
 		completedLesson.value = lesson.data?.name
+		if (data >= 100) {
+			toast.success(
+				__('Congratulations! You have completed this course. Your certificate will be emailed to you shortly.')
+			)
+		}
 		// Reload here rather than waiting on the socket, so this page's own
 		// completion unlocks the next lesson even where realtime is unavailable.
 		outline.reload()
